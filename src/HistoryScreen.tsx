@@ -136,7 +136,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
                     onDayPress={day => {
                         setSelectedDate(day.dateString);
                     }}
-                    markingType={'simple'} 
+                    //markingType={'null'} 
                     markedDates={markedDates}
                     theme={{
                         todayTextColor: '#e67e22', 

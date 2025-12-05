@@ -30,6 +30,7 @@ interface Budget {
   amount: number;
 }
 
+
 // データ保存キー
 const EXPENSES_KEY = '@MyKakeiboApp:expenses';
 const BUDGETS_KEY = '@MyKakeiboApp:budgets';
@@ -144,7 +145,7 @@ const App = () => {
   // ====================================
   // 3. 画面描画 (ローディング画面)
   // ====================================
-  if (isLoading) {
+ if (isLoading) {
     return (
         <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
