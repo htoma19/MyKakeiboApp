@@ -1,337 +1,208 @@
-// App.tsx の中身をこれに全部書き換える！
+import 'react-native-gesture-handler';
+import React, { useState, useCallback, useEffect } from 'react'; // ★ useEffect を追加
+import { SafeAreaView, StatusBar, StyleSheet, View, Text } from 'react-native';
 
-import React, { useState, useMemo } from 'react';
-import {
-  SafeAreaView,
-  View,
-  Text,
-  TextInput,
-  Button,
-  StyleSheet,
-  Alert,
-  FlatList,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
-  Platform, // OS判定のために追加
-} from 'react-native';
+// ★ AsyncStorage をインポート
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-// ★ 新しくインポートしたカレンダーピッカー
-import DateTimePicker from '@react-native-community/datetimepicker';
+// UI関連のインポート (ActivityIndicator を追加)
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Provider as PaperProvider, DefaultTheme, ActivityIndicator } from 'react-native-paper'; 
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons'; // MaterialCommunityIcons を使用
+//import Icon from 'react-native-vector-icons/MaterialIcons';
 
-// グラフライブラリをインポート (前回と同じ)
-import { PieChart } from 'react-native-chart-kit'; 
+import InputScreen from './src/InputScreen';
+import HistoryScreen from './src/HistoryScreen';
+import AnalysisScreen from './src/AnalysisScreen';
 
-const screenWidth = Dimensions.get('window').width;
-
+// データ型を定義
 interface Expense {
   id: string;
   amount: number;
   category: string;
   memo: string;
-  date: string; // ★ 日付を 'YYYY-MM-DD' 形式で保持
+  date: string; // YYYY-MM-DD 形式で保存
 }
 
-// 日付を 'YYYY-MM-DD' 形式に整形するヘルパー関数
-const formatDate = (date: Date) => {
-    return date.toISOString().split('T')[0];
+interface Budget {
+  category: string;
+  amount: number;
+}
+
+// データ保存キー
+const EXPENSES_KEY = '@MyKakeiboApp:expenses';
+const BUDGETS_KEY = '@MyKakeiboApp:budgets';
+
+// テーマを定義 (react-native-paper)
+const theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#3498db', // メインカラー (青)
+    accent: '#e74c3c',  // アクセントカラー (赤)
+  },
 };
 
-const randomColor = () => `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`;
+const Tab = createBottomTabNavigator();
 
-function App(): React.JSX.Element {
-  // 入力フォームのState
-  const [amountInput, setAmountInput] = useState('');
-  const [category, setCategory] = useState('');
-  const [memo, setMemo] = useState('');
-  const [date, setDate] = useState(new Date()); // ★ 日付 State
-  const [showDatePicker, setShowDatePicker] = useState(false); // ★ DatePicker表示/非表示
-
+const App = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [isLoading, setIsLoading] = useState(true); // ★ 読み込み状態
 
-  // ★ 支出データを計算するロジック (グラフと合計支出用)
-  const categoryData = useMemo(() => {
-    const totals: { [key: string]: number } = {};
-    expenses.forEach(expense => {
-      const cat = expense.category || '未分類';
-      totals[cat] = (totals[cat] || 0) + expense.amount;
-    });
+  // ====================================
+  // ★ 1. データの永続化ロジック
+  // ====================================
 
-    const chartData = Object.keys(totals).map((cat) => {
-      return {
-        name: cat,
-        population: totals[cat],
-        color: randomColor(),
-        legendFontColor: '#7F7F7F',
-        legendFontSize: 14,
-      };
-    });
-    
-    const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  // 初期データの読み込み
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const storedExpenses = await AsyncStorage.getItem(EXPENSES_KEY);
+        const storedBudgets = await AsyncStorage.getItem(BUDGETS_KEY);
 
-    return { chartData, totalAmount };
-  }, [expenses]);
+        if (storedExpenses) {
+          // Date型ではなく文字列のまま保存されているので、そのままパース
+          setExpenses(JSON.parse(storedExpenses));
+        }
+        if (storedBudgets) {
+          setBudgets(JSON.parse(storedBudgets));
+        }
+      } catch (e) {
+        console.error('Failed to load data from storage', e);
+      } finally {
+        setIsLoading(false); // 読み込み完了
+      }
+    };
+    loadData();
+  }, []);
 
-  const { chartData, totalAmount } = categoryData;
+  // expenses の変更を検知して保存
+  useEffect(() => {
+    const saveExpenses = async () => {
+      if (expenses.length > 0 || !isLoading) { // 初回ロード完了後、またはデータがある場合に保存
+        try {
+          await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+        } catch (e) {
+          console.error('Failed to save expenses', e);
+        }
+      }
+    };
+    saveExpenses();
+  }, [expenses, isLoading]);
+
+  // budgets の変更を検知して保存
+  useEffect(() => {
+    const saveBudgets = async () => {
+      if (budgets.length > 0 || !isLoading) { // 初回ロード完了後、またはデータがある場合に保存
+        try {
+          await AsyncStorage.setItem(BUDGETS_KEY, JSON.stringify(budgets));
+        } catch (e) {
+          console.error('Failed to save budgets', e);
+        }
+      }
+    };
+    saveBudgets();
+  }, [budgets, isLoading]);
 
 
-  // ★ DatePickerで日付が選択された時の処理
-  const onChangeDate = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || date;
-    setShowDatePicker(Platform.OS === 'ios'); // iOSでは選択後も表示したままにするためfalse
-    setDate(currentDate);
-  };
-  
+  // ====================================
+  // 2. コールバック関数
+  // ====================================
 
-  // ★ 登録ボタンを押した時の処理
-  const handlePress = () => {
-    const numAmount = parseInt(amountInput, 10);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      Alert.alert('エラー', '有効な金額を入力してください！');
-      return;
-    }
-
+  const handleAddExpense = useCallback((expense: { amount: number; category: string; memo: string, date: Date }) => {
     const newExpense: Expense = {
       id: Date.now().toString(),
-      amount: numAmount,
-      category: category.trim() || '未分類',
-      memo: memo,
-      date: formatDate(date), // ★ フォーマットされた日付を保存
+      amount: expense.amount,
+      category: expense.category,
+      memo: expense.memo,
+      date: expense.date.toISOString().split('T')[0], // YYYY-MM-DD 形式
     };
+    setExpenses(prev => [newExpense, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+  }, []);
 
-    // リストに新しいデータを追加し、日付順（新しいものが上）にソート
-    const updatedExpenses = [newExpense, ...expenses];
-    setExpenses(updatedExpenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    
-    // 入力欄をリセット
-    setAmountInput('');
-    setCategory('');
-    setMemo('');
-    setDate(new Date());
-  };
+  const handleDeleteExpense = useCallback((id: string) => {
+    setExpenses(prev => prev.filter(e => e.id !== id));
+  }, []);
 
-  // 削除ボタンの処理 (変更なし)
-  const handleDelete = (id: string) => {
-    Alert.alert(
-      '削除の確認', 
-      'この支出を削除しますか？', 
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        { text: '削除', style: 'destructive', onPress: () => {
-            setExpenses(expenses.filter(item => item.id !== id));
-        }},
-      ]
+  const handleSetBudget = useCallback((budget: Budget) => {
+    setBudgets(prev => {
+      const existingIndex = prev.findIndex(b => b.category === budget.category);
+      if (existingIndex > -1) {
+        // 更新
+        const newBudgets = [...prev];
+        newBudgets[existingIndex] = budget;
+        return newBudgets;
+      } else {
+        // 新規追加
+        return [...prev, budget];
+      }
+    });
+  }, []);
+
+  // ====================================
+  // 3. 画面描画 (ローディング画面)
+  // ====================================
+  if (isLoading) {
+    return (
+        <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={{ marginTop: 10 }}>データを読み込み中...</Text>
+        </View>
     );
-  };
-  
-  // リストの各行を描画する関数
-  const renderItem = ({ item }: { item: Expense }) => (
-    <View style={styles.listItem}>
-      <View style={styles.listTextContainer}>
-        <Text style={styles.itemDate}>{item.date}</Text> {/* ★ 日付を表示 */}
-        <Text style={styles.itemCategory}>{item.category}</Text>
-        <Text style={styles.itemAmount}>- {item.amount.toLocaleString()}円</Text>
-        {item.memo ? <Text style={styles.itemMemo}>{item.memo}</Text> : null}
-      </View>
-      <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteButton}>
-        <Text style={styles.deleteButtonText}>×</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.container}>
-
-            {/* ==================================== */}
-            {/* 1. 分析エリア (グラフ)                  */}
-            {/* ==================================== */}
-            <View style={styles.analysisSection}>
-                <Text style={styles.sectionTitle}>分析・ナビゲーター</Text>
-                
-                {totalAmount > 0 ? (
-                    <View>
-                        <Text style={styles.totalText}>合計支出: {totalAmount.toLocaleString()}円</Text>
-                        <PieChart
-                            data={chartData}
-                            width={screenWidth - 40}
-                            height={220}
-                            chartConfig={{
-                                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                            }}
-                            accessor={"population"}
-                            backgroundColor={"transparent"}
-                            paddingLeft={"15"}
-                            center={[5, 0]}
-                        />
-                    </View>
-                ) : (
-                    <Text style={styles.noDataText}>データがありません。支出を登録しましょう！</Text>
-                )}
-            </View>
-
-
-            {/* ==================================== */}
-            {/* 2. 入力エリア                           */}
-            {/* ==================================== */}
-            <View style={styles.inputSection}>
-                <Text style={styles.mainTitle}>支出入力</Text>
-                
-                {/* 日付入力（ボタンでカレンダーを開く） */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>日付</Text>
-                    <TouchableOpacity 
-                        style={styles.dateButton} 
-                        onPress={() => setShowDatePicker(true)}
-                    >
-                        <Text style={styles.dateButtonText}>{formatDate(date)}</Text>
-                    </TouchableOpacity>
-
-                    {/* カレンダーピッカー本体 */}
-                    {showDatePicker && (
-                        <DateTimePicker
-                            value={date}
-                            mode="date"
-                            display="default"
-                            onChange={onChangeDate}
-                            maximumDate={new Date()} // 未来の日付は選択不可
-                        />
-                    )}
-                </View>
-
-                {/* 金額入力 */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>金額 (円)</Text>
-                    <TextInput
-                    style={styles.input}
-                    placeholder="1000"
-                    keyboardType="numeric"
-                    value={amountInput}
-                    onChangeText={setAmountInput}
-                    />
-                </View>
-
-                {/* カテゴリ入力 */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>カテゴリ</Text>
-                    <TextInput
-                    style={styles.input}
-                    placeholder="例：食費、交通費"
-                    value={category}
-                    onChangeText={setCategory}
-                    />
-                </View>
-                
-                {/* メモ入力 */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>メモ</Text>
-                    <TextInput
-                    style={styles.input}
-                    placeholder="例：コンビニでお菓子買った"
-                    value={memo}
-                    onChangeText={setMemo}
-                    />
-                </View>
-
-                {/* 登録ボタン */}
-                <View style={styles.buttonContainer}>
-                    <Button title="登録する" onPress={handlePress} /> 
-                </View>
-            </View>
-
-
-            {/* ==================================== */}
-            {/* 3. 履歴リストエリア                      */}
-            {/* ==================================== */}
-            <View style={styles.listSection}>
-                <Text style={styles.listTitle}>履歴 ({expenses.length}件)</Text>
-                
-                <FlatList
-                    data={expenses}
-                    renderItem={renderItem}
-                    keyExtractor={item => item.id}
-                    style={styles.list}
-                    scrollEnabled={false} 
-                />
-            </View>
-
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+    <PaperProvider theme={theme}>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#3498db" />
+        <NavigationContainer>
+          <Tab.Navigator
+            screenOptions={({ route }) => ({
+              tabBarIcon: ({ color, size }) => {
+                let iconName: string;
+                if (route.name === '登録') {
+                  iconName = 'cash-register';
+                } else if (route.name === '分析') {
+                  iconName = 'chart-pie';
+                } else {
+                  iconName = 'history';
+                }
+                return <Icon name={iconName} size={size} color={color} />;
+              },
+              tabBarActiveTintColor: theme.colors.primary,
+              tabBarInactiveTintColor: 'gray',
+              headerShown: false,
+            })}
+          >
+            <Tab.Screen name="登録">
+              {props => <InputScreen {...props} onAddExpense={handleAddExpense} />}
+            </Tab.Screen>
+            <Tab.Screen name="分析">
+              {props => <AnalysisScreen {...props} expenses={expenses} budgets={budgets} onSetBudget={handleSetBudget} />}
+            </Tab.Screen>
+            <Tab.Screen name="履歴">
+              {props => <HistoryScreen {...props} expenses={expenses} onDeleteExpense={handleDeleteExpense} />}
+            </Tab.Screen>
+          </Tab.Navigator>
+        </NavigationContainer>
+      </SafeAreaView>
+    </PaperProvider>
   );
-}
+};
 
-// スタイル (日付ボタン周りを追加)
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#f5f5f5' },
-  scrollContent: { paddingBottom: 50 },
-  container: { flex: 1, paddingHorizontal: 20 },
-  // --- 分析エリア ---
-  analysisSection: {
-    paddingVertical: 20,
-    marginBottom: 20,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
   },
-  totalText: { fontSize: 16, fontWeight: 'bold', marginBottom: 10, textAlign: 'center', color: '#333' },
-  noDataText: { textAlign: 'center', color: '#999', paddingVertical: 20 },
-  // --- 入力エリア ---
-  inputSection: { paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee', marginBottom: 20 },
-  mainTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  sectionTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 10, color: '#1a1a1a' },
-  inputGroup: { marginBottom: 10 },
-  label: { fontSize: 14, marginBottom: 4, fontWeight: '500', color: '#333' },
-  input: { backgroundColor: 'white', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 10, fontSize: 16 },
-  buttonContainer: { marginTop: 10 },
-  // ★ 日付ボタンのスタイル
-  dateButton: {
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    padding: 10,
-  },
-  dateButtonText: {
-    fontSize: 16,
-    color: '#333',
-  },
-  // --- リストエリア ---
-  listSection: { flex: 1 },
-  listTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#555' },
-  list: { flex: 1 },
-  listItem: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 8,
-    flexDirection: 'row',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  listTextContainer: { flex: 1 },
-  itemAmount: { fontSize: 18, fontWeight: 'bold', color: '#d9534f' },
-  itemCategory: { fontSize: 12, color: '#999', marginBottom: 2 },
-  itemMemo: { fontSize: 12, color: '#666', marginTop: 4 },
-  // ★ 日付表示のスタイル
-  itemDate: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#007aff', // 青色で日付を強調
-    marginBottom: 4,
-  },
-  deleteButton: { marginLeft: 10, padding: 5 },
-  deleteButtonText: { fontSize: 20, color: '#aaa' }
+    backgroundColor: '#f5f5f5',
+  }
 });
 
 export default App;
