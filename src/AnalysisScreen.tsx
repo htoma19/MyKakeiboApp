@@ -5,11 +5,10 @@ import {
   StyleSheet,
   Dimensions,
   ScrollView,
-  Alert,
-  TextInput as RNTextInput, // 標準のTextInputをリネームして共存
+  Alert, // Alertをインポート
 } from 'react-native';
 
-// ★ react-native-paper からモダンなコンポーネントをインポート
+// react-native-paper からモダンなコンポーネントをインポート
 import { Card, Title, Paragraph, Button, TextInput, ProgressBar } from 'react-native-paper';
 
 import { PieChart } from 'react-native-chart-kit'; 
@@ -44,7 +43,7 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ expenses, budgets, onSe
     const [budgetCategory, setBudgetCategory] = useState('');
     const [budgetAmountInput, setBudgetAmountInput] = useState('');
 
-    // ★ 現在の年と月を取得
+    // 現在の年と月を取得
     const currentYearMonth = useMemo(() => {
         const now = new Date();
         // 'YYYY-MM' 形式
@@ -52,7 +51,7 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ expenses, budgets, onSe
     }, []);
 
 
-    // ★ 月次分析ロジック (今月のデータだけを計算)
+    // 月次分析ロジック (今月のデータだけを計算)
     const monthlyAnalysis = useMemo(() => {
         const totals: { [key: string]: number } = {};
         let monthlyTotal = 0;
@@ -80,12 +79,12 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ expenses, budgets, onSe
         });
         
         return { chartData, monthlyTotal, categoryTotals: totals };
-    }, [expenses, currentYearMonth]); // 今月のデータのみを再計算
+    }, [expenses, currentYearMonth]);
 
     const { chartData, monthlyTotal, categoryTotals } = monthlyAnalysis;
 
 
-    // ★ 予算設定ボタンのハンドラ
+    // 予算設定ボタンのハンドラ
     const handleSetBudget = () => {
         const numAmount = parseInt(budgetAmountInput, 10);
         if (isNaN(numAmount) || numAmount <= 0 || budgetCategory.trim() === '') {
@@ -103,25 +102,31 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ expenses, budgets, onSe
         setBudgetAmountInput('');
     };
 
-    // ★ 進捗バーの表示コンポーネント
+    // 進捗バーの表示コンポーネント
     const renderBudgetProgress = (budget: Budget) => {
         const spent = categoryTotals[budget.category] || 0;
         const progress = budget.amount > 0 ? spent / budget.amount : 0;
         const progressColor = progress > 1 ? 'red' : progress > 0.8 ? 'orange' : '#4CAF50';
         const remaining = budget.amount - spent;
-    
+        
         return (
             <Card key={budget.category} style={styles.budgetCard}>
                 <Card.Content>
                     <View style={styles.budgetHeader}>
                         <Text style={styles.budgetCatTitle}>{budget.category} 予算</Text>
-                        
-                        {/* ★ この部分が <Text> で囲まれているか確認！ */}
                         <Text style={[styles.remainingText, { color: remaining < 0 ? 'red' : 'green' }]}>
                             残 {remaining.toLocaleString()} 円
                         </Text>
                     </View>
-                    {/* ... (後略) */}
+                    <ProgressBar 
+                        progress={progress} 
+                        color={progressColor} 
+                        style={styles.progressBar} 
+                    />
+                    <View style={styles.progressDetail}>
+                        <Text style={styles.progressText}>使用: {spent.toLocaleString()} 円</Text>
+                        <Text style={styles.progressText}>予算: {budget.amount.toLocaleString()} 円</Text>
+                    </View>
                 </Card.Content>
             </Card>
         );
@@ -133,7 +138,7 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ expenses, budgets, onSe
                 <Title style={styles.pageTitle}>💸 {currentYearMonth} の支出分析</Title>
                 
                 {/* ==================================== */}
-                {/* 1. 月次予算設定エリア (モダンなデザイン) */}
+                {/* 1. 月次予算設定エリア */}
                 {/* ==================================== */}
                 <Card style={styles.inputCard}>
                     <Card.Title title="カテゴリ別 予算設定" subtitle="目標を設定して使いすぎを防止" />
@@ -176,8 +181,8 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ expenses, budgets, onSe
 
 
                 {/* ==================================== */}
-                /* 3. 月次分析 (グラフ)                  
-                /* ==================================== */
+                {/* 3. 月次分析 (グラフ)                  */}
+                {/* ==================================== */}
                 <Title style={styles.sectionTitle}>📊 {currentYearMonth} のカテゴリ分析</Title>
                 <Card style={styles.chartCard}>
                     <Card.Content>
@@ -207,7 +212,7 @@ const AnalysisScreen: React.FC<AnalysisScreenProps> = ({ expenses, budgets, onSe
     );
 };
 
-// スタイル (react-native-paperに合わせた調整)
+// スタイル
 const styles = StyleSheet.create({
     scrollContent: {
         paddingBottom: 50,
@@ -231,11 +236,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         color: '#333',
     },
-    // 予算設定カード
     inputCard: {
         marginHorizontal: 10,
         marginBottom: 20,
-        elevation: 4, // 影を強めに
+        elevation: 4,
     },
     textInput: {
         marginBottom: 10,
@@ -245,7 +249,6 @@ const styles = StyleSheet.create({
         marginTop: 10,
         paddingVertical: 4,
     },
-    // グラフ表示カード
     chartCard: {
         marginHorizontal: 10,
         marginBottom: 20,
@@ -264,7 +267,6 @@ const styles = StyleSheet.create({
         paddingVertical: 20,
         color: '#999',
     },
-    // 予算進捗カード
     budgetCard: {
         marginHorizontal: 10,
         marginBottom: 10,
