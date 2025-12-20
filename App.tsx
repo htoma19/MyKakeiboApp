@@ -1,20 +1,20 @@
 import 'react-native-gesture-handler';
-import React, { useState, useCallback, useEffect } from 'react'; // ★ useEffect を追加
+import React, { useState, useCallback, useEffect } from 'react'; 
 import { SafeAreaView, StatusBar, StyleSheet, View, Text } from 'react-native';
 
-// ★ AsyncStorage をインポート
+// AsyncStorage をインポート
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-// UI関連のインポート (ActivityIndicator を追加)
+// UI関連のインポート
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider as PaperProvider, DefaultTheme, ActivityIndicator } from 'react-native-paper'; 
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons'; // MaterialCommunityIcons を使用
-//import Icon from 'react-native-vector-icons/MaterialIcons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons'; 
 
 import InputScreen from './src/InputScreen';
 import HistoryScreen from './src/HistoryScreen';
 import AnalysisScreen from './src/AnalysisScreen';
+import SettingsScreen from './src/SettingsScreen'; // ★ 追加
 
 // データ型を定義
 interface Expense {
@@ -22,7 +22,7 @@ interface Expense {
   amount: number;
   category: string;
   memo: string;
-  date: string; // YYYY-MM-DD 形式で保存
+  date: string;
 }
 
 interface Budget {
@@ -30,18 +30,22 @@ interface Budget {
   amount: number;
 }
 
-
 // データ保存キー
 const EXPENSES_KEY = '@MyKakeiboApp:expenses';
 const BUDGETS_KEY = '@MyKakeiboApp:budgets';
+const CATEGORIES_KEY = '@MyKakeiboApp:categories'; // ★ 追加
 
-// テーマを定義 (react-native-paper)
+// デフォルトのカテゴリリスト
+const DEFAULT_CATEGORIES = [
+    '食費', '交通費', '日用品', '娯楽', '交際費', '自己投資', '住居費', '未分類'
+];
+
 const theme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    primary: '#3498db', // メインカラー (青)
-    accent: '#e74c3c',  // アクセントカラー (赤)
+    primary: '#3498db',
+    accent: '#e74c3c',
   },
 };
 
@@ -50,62 +54,41 @@ const Tab = createBottomTabNavigator();
 const App = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // ★ 読み込み状態
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES); // ★ カテゴリState
+  const [isLoading, setIsLoading] = useState(true); 
 
   // ====================================
-  // ★ 1. データの永続化ロジック
+  // 1. データの永続化ロジック
   // ====================================
 
-  // 初期データの読み込み
   useEffect(() => {
     const loadData = async () => {
       try {
         const storedExpenses = await AsyncStorage.getItem(EXPENSES_KEY);
         const storedBudgets = await AsyncStorage.getItem(BUDGETS_KEY);
+        const storedCategories = await AsyncStorage.getItem(CATEGORIES_KEY); // ★ カテゴリ読み込み
 
-        if (storedExpenses) {
-          // Date型ではなく文字列のまま保存されているので、そのままパース
-          setExpenses(JSON.parse(storedExpenses));
-        }
-        if (storedBudgets) {
-          setBudgets(JSON.parse(storedBudgets));
-        }
+        if (storedExpenses) setExpenses(JSON.parse(storedExpenses));
+        if (storedBudgets) setBudgets(JSON.parse(storedBudgets));
+        // 保存されたカテゴリがあれば使う、なければデフォルトを使う
+        if (storedCategories) setCategories(JSON.parse(storedCategories));
       } catch (e) {
-        console.error('Failed to load data from storage', e);
+        console.error('Failed to load data', e);
       } finally {
-        setIsLoading(false); // 読み込み完了
+        setIsLoading(false);
       }
     };
     loadData();
   }, []);
 
-  // expenses の変更を検知して保存
+  // データ保存用 useEffect
   useEffect(() => {
-    const saveExpenses = async () => {
-      if (expenses.length > 0 || !isLoading) { // 初回ロード完了後、またはデータがある場合に保存
-        try {
-          await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
-        } catch (e) {
-          console.error('Failed to save expenses', e);
-        }
-      }
-    };
-    saveExpenses();
-  }, [expenses, isLoading]);
-
-  // budgets の変更を検知して保存
-  useEffect(() => {
-    const saveBudgets = async () => {
-      if (budgets.length > 0 || !isLoading) { // 初回ロード完了後、またはデータがある場合に保存
-        try {
-          await AsyncStorage.setItem(BUDGETS_KEY, JSON.stringify(budgets));
-        } catch (e) {
-          console.error('Failed to save budgets', e);
-        }
-      }
-    };
-    saveBudgets();
-  }, [budgets, isLoading]);
+    if (!isLoading) {
+        AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses)).catch(e => console.error(e));
+        AsyncStorage.setItem(BUDGETS_KEY, JSON.stringify(budgets)).catch(e => console.error(e));
+        AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories)).catch(e => console.error(e)); // ★ カテゴリ保存
+    }
+  }, [expenses, budgets, categories, isLoading]);
 
 
   // ====================================
@@ -118,7 +101,7 @@ const App = () => {
       amount: expense.amount,
       category: expense.category,
       memo: expense.memo,
-      date: expense.date.toISOString().split('T')[0], // YYYY-MM-DD 形式
+      date: expense.date.toISOString().split('T')[0],
     };
     setExpenses(prev => [newExpense, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   }, []);
@@ -131,21 +114,30 @@ const App = () => {
     setBudgets(prev => {
       const existingIndex = prev.findIndex(b => b.category === budget.category);
       if (existingIndex > -1) {
-        // 更新
         const newBudgets = [...prev];
         newBudgets[existingIndex] = budget;
         return newBudgets;
       } else {
-        // 新規追加
         return [...prev, budget];
       }
     });
   }, []);
 
+  // ★ カテゴリ追加処理
+  const handleAddCategory = useCallback((category: string) => {
+      setCategories(prev => [...prev, category]);
+  }, []);
+
+  // ★ カテゴリ削除処理
+  const handleDeleteCategory = useCallback((category: string) => {
+      setCategories(prev => prev.filter(c => c !== category));
+  }, []);
+
+
   // ====================================
-  // 3. 画面描画 (ローディング画面)
+  // 3. 画面描画
   // ====================================
- if (isLoading) {
+  if (isLoading) {
     return (
         <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -162,14 +154,11 @@ const App = () => {
           <Tab.Navigator
             screenOptions={({ route }) => ({
               tabBarIcon: ({ color, size }) => {
-                let iconName: string;
-                if (route.name === '登録') {
-                  iconName = 'cash-register';
-                } else if (route.name === '分析') {
-                  iconName = 'chart-pie';
-                } else {
-                  iconName = 'history';
-                }
+                let iconName: string = 'circle';
+                if (route.name === '登録') iconName = 'cash-register';
+                else if (route.name === '分析') iconName = 'chart-pie';
+                else if (route.name === '履歴') iconName = 'history';
+                else if (route.name === '設定') iconName = 'cog'; // ★ 設定アイコン
                 return <Icon name={iconName} size={size} color={color} />;
               },
               tabBarActiveTintColor: theme.colors.primary,
@@ -178,13 +167,18 @@ const App = () => {
             })}
           >
             <Tab.Screen name="登録">
-              {props => <InputScreen {...props} onAddExpense={handleAddExpense} />}
+              {/* categories を渡す */}
+              {props => <InputScreen {...props} onAddExpense={handleAddExpense} categories={categories} />}
             </Tab.Screen>
             <Tab.Screen name="分析">
               {props => <AnalysisScreen {...props} expenses={expenses} budgets={budgets} onSetBudget={handleSetBudget} />}
             </Tab.Screen>
             <Tab.Screen name="履歴">
               {props => <HistoryScreen {...props} expenses={expenses} onDeleteExpense={handleDeleteExpense} />}
+            </Tab.Screen>
+            {/* ★ 設定タブを追加 */}
+            <Tab.Screen name="設定">
+              {props => <SettingsScreen {...props} categories={categories} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} />}
             </Tab.Screen>
           </Tab.Navigator>
         </NavigationContainer>
