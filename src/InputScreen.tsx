@@ -9,18 +9,17 @@ import {
   ScrollView,
 } from 'react-native';
 
-import { Card, TextInput, Button, Title, Dialog, Portal, List, HelperText } from 'react-native-paper'; 
+// useTheme を追加して、色情報を取得できるようにする
+import { Card, TextInput, Button, Title, Dialog, Portal, List, HelperText, useTheme } from 'react-native-paper'; 
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface InputScreenProps {
   onAddExpense: (expense: { amount: number; category: string; memo: string, date: Date }) => void;
-  categories: string[]; // ★ App.tsxから受け取るように変更
+  categories: string[]; 
 }
 
-// メモ内容からカテゴリを推測するロジック
 const getCategoryFromMemo = (memo: string): string | null => {
     const lowerMemo = memo.toLowerCase();
-    // ここは主要なキーワードの簡易判定として残します
     if (lowerMemo.includes('食') || lowerMemo.includes('コンビニ') || lowerMemo.includes('スーパー')) return '食費';
     if (lowerMemo.includes('電車') || lowerMemo.includes('バス') || lowerMemo.includes('タクシー')) return '交通費';
     if (lowerMemo.includes('薬') || lowerMemo.includes('日用品')) return '日用品';
@@ -34,6 +33,8 @@ const formatDate = (date: Date) => {
 };
 
 const InputScreen: React.FC<InputScreenProps> = ({ onAddExpense, categories }) => {
+  const theme = useTheme(); // ★ 現在のテーマ（ライトorダーク）を取得
+
   const [amountInput, setAmountInput] = useState('');
   const [category, setCategory] = useState(''); 
   const [memo, setMemo] = useState('');
@@ -44,7 +45,6 @@ const InputScreen: React.FC<InputScreenProps> = ({ onAddExpense, categories }) =
   const handleMemoChange = (text: string) => {
     setMemo(text);
     const suggestedCategory = getCategoryFromMemo(text);
-    // 提案されたカテゴリが現在のリストに存在する場合のみセット
     if (suggestedCategory && categories.includes(suggestedCategory) && category === '') {
         setCategory(suggestedCategory);
     }
@@ -87,20 +87,21 @@ const InputScreen: React.FC<InputScreenProps> = ({ onAddExpense, categories }) =
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
+    // 背景色を動的に変更
+    <ScrollView contentContainerStyle={[styles.scrollContainer, { backgroundColor: theme.colors.background }]}>
       <View style={styles.container}>
-        <Title style={styles.pageTitle}>💰 支出を登録</Title>
+        <Title style={[styles.pageTitle, { color: theme.colors.onBackground }]}>💰 支出を登録</Title>
 
-        <Card style={styles.inputCard} elevation={4}> 
+        <Card style={styles.inputCard} elevation={2}> 
           <Card.Content>
             
             <View style={styles.inputGroup}>
-                <Text style={styles.label}>日付</Text>
+                <Text style={[styles.label, { color: theme.colors.onSurface }]}>日付</Text>
                 <TouchableOpacity 
-                    style={styles.dateButton} 
+                    style={[styles.dateButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline }]} 
                     onPress={() => setShowDatePicker(true)}
                 >
-                    <Text style={styles.dateButtonText}>{formatDate(date)}</Text>
+                    <Text style={[styles.dateButtonText, { color: theme.colors.onSurface }]}>{formatDate(date)}</Text>
                 </TouchableOpacity>
 
                 {showDatePicker && (
@@ -122,7 +123,7 @@ const InputScreen: React.FC<InputScreenProps> = ({ onAddExpense, categories }) =
               value={amountInput}
               onChangeText={setAmountInput}
               mode="outlined"
-              style={styles.textInput}
+              style={[styles.textInput, { backgroundColor: theme.colors.surface }]}
             />
 
             <TouchableOpacity 
@@ -135,7 +136,7 @@ const InputScreen: React.FC<InputScreenProps> = ({ onAddExpense, categories }) =
                     mode="outlined"
                     editable={false}
                     right={<TextInput.Icon icon="menu-down" />}
-                    style={styles.textInput}
+                    style={[styles.textInput, { backgroundColor: theme.colors.surface }]}
                 />
             </TouchableOpacity>
 
@@ -145,7 +146,7 @@ const InputScreen: React.FC<InputScreenProps> = ({ onAddExpense, categories }) =
               value={memo}
               onChangeText={handleMemoChange}
               mode="outlined"
-              style={[styles.textInput, { marginBottom: 5 }]}
+              style={[styles.textInput, { marginBottom: 5, backgroundColor: theme.colors.surface }]}
             />
             <HelperText type="info" visible={true} style={{ marginBottom: 15 }}>
                 メモを入力すると、カテゴリが自動で提案されます
@@ -162,7 +163,6 @@ const InputScreen: React.FC<InputScreenProps> = ({ onAddExpense, categories }) =
           </Card.Content>
         </Card>
 
-        {/* カテゴリ選択ダイアログ (App.tsxから来た categories を使用) */}
         <Portal>
             <Dialog visible={showCategoryDialog} onDismiss={() => setShowCategoryDialog(false)}>
                 <Dialog.Title>カテゴリを選択</Dialog.Title>
@@ -190,19 +190,16 @@ const InputScreen: React.FC<InputScreenProps> = ({ onAddExpense, categories }) =
 };
 
 const styles = StyleSheet.create({
-  scrollContainer: { flexGrow: 1, backgroundColor: '#f5f5f5', },
+  scrollContainer: { flexGrow: 1 },
   container: { padding: 20, flex: 1, },
-  pageTitle: { fontSize: 26, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#1a1a1a', },
-  inputCard: { padding: 10, elevation: 4, },
+  pageTitle: { fontSize: 26, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
+  inputCard: { padding: 10, elevation: 2 }, // elevationを少し下げる
   inputGroup: { marginBottom: 15, },
-  label: { fontSize: 14, marginBottom: 4, fontWeight: '500', color: '#555', },
-  textInput: { marginBottom: 0, backgroundColor: 'white', },
-  categorySelectGroup: { 
-    marginBottom: 15,
-    marginTop: 15,
-  },
-  dateButton: { backgroundColor: 'white', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 15, alignItems: 'center', },
-  dateButtonText: { fontSize: 16, color: '#333', fontWeight: '600', },
+  label: { fontSize: 14, marginBottom: 4, fontWeight: '500' },
+  textInput: { marginBottom: 0 },
+  categorySelectGroup: { marginBottom: 15, marginTop: 15 },
+  dateButton: { borderWidth: 1, borderRadius: 6, padding: 15, alignItems: 'center', },
+  dateButtonText: { fontSize: 16, fontWeight: '600', },
   buttonContent: { paddingVertical: 8, },
   dialogScrollArea: { maxHeight: 300, paddingHorizontal: 0, },
   dialogContent: { paddingTop: 0, },

@@ -1,14 +1,19 @@
 import 'react-native-gesture-handler';
 import React, { useState, useCallback, useEffect } from 'react'; 
-import { SafeAreaView, StatusBar, StyleSheet, View, Text, Platform } from 'react-native';
+import { SafeAreaView, StatusBar, StyleSheet, View, Text, Platform, useColorScheme } from 'react-native';
 
-// AsyncStorage をインポート
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-// UI関連のインポート
-import { NavigationContainer } from '@react-navigation/native';
+// テーマ関連のインポート
+import { NavigationContainer, DarkTheme as NavDarkTheme, DefaultTheme as NavDefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Provider as PaperProvider, DefaultTheme, ActivityIndicator } from 'react-native-paper'; 
+import { 
+    Provider as PaperProvider, 
+    MD3DarkTheme, 
+    MD3LightTheme, 
+    adaptNavigationTheme,
+    ActivityIndicator
+} from 'react-native-paper'; 
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons'; 
 
 import InputScreen from './src/InputScreen';
@@ -16,7 +21,37 @@ import HistoryScreen from './src/HistoryScreen';
 import AnalysisScreen from './src/AnalysisScreen';
 import SettingsScreen from './src/SettingsScreen';
 
-// データ型を定義
+// NavigationのテーマとPaperのテーマを統合
+const { LightTheme, DarkTheme } = adaptNavigationTheme({
+    reactNavigationLight: NavDefaultTheme,
+    reactNavigationDark: NavDarkTheme,
+});
+
+// ★ 修正箇所: fonts プロパティを明示的に指定して上書きを防ぐ
+const CustomLightTheme = {
+    ...MD3LightTheme,
+    ...LightTheme,
+    colors: {
+        ...MD3LightTheme.colors,
+        ...LightTheme.colors,
+        primary: '#3498db',
+        accent: '#e74c3c',
+    },
+    fonts: MD3LightTheme.fonts, // これでフォントエラーを防ぎます
+};
+
+const CustomDarkTheme = {
+    ...MD3DarkTheme,
+    ...DarkTheme,
+    colors: {
+        ...MD3DarkTheme.colors,
+        ...DarkTheme.colors,
+        primary: '#5dade2',
+        accent: '#e74c3c',
+    },
+    fonts: MD3DarkTheme.fonts, // ダークモードも同様に
+};
+
 interface Expense {
   id: string;
   amount: number;
@@ -30,36 +65,26 @@ interface Budget {
   amount: number;
 }
 
-// データ保存キー
 const EXPENSES_KEY = '@MyKakeiboApp:expenses';
 const BUDGETS_KEY = '@MyKakeiboApp:budgets';
 const CATEGORIES_KEY = '@MyKakeiboApp:categories';
 
-// デフォルトのカテゴリリスト
 const DEFAULT_CATEGORIES = [
     '食費', '交通費', '日用品', '娯楽', '交際費', '自己投資', '住居費', '未分類'
 ];
 
-const theme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    primary: '#3498db',
-    accent: '#e74c3c',
-  },
-};
-
 const Tab = createBottomTabNavigator();
 
 const App = () => {
+  const colorScheme = useColorScheme();
+  const isDarkMode = colorScheme === 'dark';
+  
+  const theme = isDarkMode ? CustomDarkTheme : CustomLightTheme;
+
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [isLoading, setIsLoading] = useState(true); 
-
-  // ====================================
-  // 1. データの永続化ロジック
-  // ====================================
 
   useEffect(() => {
     const loadData = async () => {
@@ -88,11 +113,6 @@ const App = () => {
     }
   }, [expenses, budgets, categories, isLoading]);
 
-
-  // ====================================
-  // 2. コールバック関数
-  // ====================================
-
   const handleAddExpense = useCallback((expense: { amount: number; category: string; memo: string, date: Date }) => {
     const newExpense: Expense = {
       id: Date.now().toString(),
@@ -104,7 +124,6 @@ const App = () => {
     setExpenses(prev => [newExpense, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   }, []);
 
-  // ★ 追加：データの更新機能
   const handleUpdateExpense = useCallback((updatedExpense: Expense) => {
     setExpenses(prev => prev.map(e => e.id === updatedExpense.id ? updatedExpense : e));
   }, []);
@@ -134,24 +153,23 @@ const App = () => {
       setCategories(prev => prev.filter(c => c !== category));
   }, []);
 
-
-  // ====================================
-  // 3. 画面描画
-  // ====================================
   if (isLoading) {
     return (
-        <View style={styles.loadingContainer}>
+        <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={{ marginTop: 10 }}>データを読み込み中...</Text>
+            <Text style={{ marginTop: 10, color: theme.colors.onBackground }}>データを読み込み中...</Text>
         </View>
     );
   }
 
   return (
     <PaperProvider theme={theme}>
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#3498db" />
-        <NavigationContainer>
+      <StatusBar 
+        barStyle={isDarkMode ? "light-content" : "dark-content"} 
+        backgroundColor={theme.colors.background} 
+      />
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }]}>
+        <NavigationContainer theme={theme}>
           <Tab.Navigator
             screenOptions={({ route }) => ({
               tabBarIcon: ({ color, size }) => {
@@ -165,6 +183,10 @@ const App = () => {
               tabBarActiveTintColor: theme.colors.primary,
               tabBarInactiveTintColor: 'gray',
               headerShown: false,
+              tabBarStyle: {
+                  backgroundColor: theme.colors.elevation.level2,
+                  borderTopColor: theme.colors.outline,
+              }
             })}
           >
             <Tab.Screen name="登録">
@@ -174,7 +196,6 @@ const App = () => {
               {props => <AnalysisScreen {...props} expenses={expenses} budgets={budgets} onSetBudget={handleSetBudget} />}
             </Tab.Screen>
             <Tab.Screen name="履歴">
-              {/* ★ onUpdateExpense を渡すように変更 */}
               {props => <HistoryScreen {...props} expenses={expenses} onDeleteExpense={handleDeleteExpense} onUpdateExpense={handleUpdateExpense} />}
             </Tab.Screen>
             <Tab.Screen name="設定">
@@ -190,15 +211,11 @@ const App = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    // ✅ 以下の行を追加（Androidの場合のみ、ステータスバーの高さ分だけ下にずらす）
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
   }
 });
 

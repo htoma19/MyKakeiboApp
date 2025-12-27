@@ -9,8 +9,7 @@ import {
   TouchableWithoutFeedback
 } from 'react-native';
 
-// Dialog, Portal, TextInput, Button を追加インポート
-import { Card, Title, List, IconButton, Searchbar, Dialog, Portal, TextInput, Button } from 'react-native-paper'; 
+import { Card, Title, List, IconButton, Searchbar, Dialog, Portal, TextInput, Button, useTheme } from 'react-native-paper'; 
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 
 LocaleConfig.locales['jp'] = {
@@ -24,7 +23,7 @@ LocaleConfig.defaultLocale = 'jp';
 interface HistoryScreenProps {
     expenses: Expense[];
     onDeleteExpense: (id: string) => void;
-    onUpdateExpense: (expense: Expense) => void; // ★ 更新用の関数を受け取る
+    onUpdateExpense: (expense: Expense) => void; 
 }
 
 interface Expense {
@@ -32,7 +31,7 @@ interface Expense {
     amount: number;
     category: string;
     memo: string;
-    date: string; // 'YYYY-MM-DD'
+    date: string;
 }
 
 const formatDate = (date: Date) => {
@@ -51,15 +50,16 @@ const getCategoryIcon = (category: string) => {
 }
 
 const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense, onUpdateExpense }) => {
+    const theme = useTheme(); // ★ テーマ取得
+
     const [selectedDate, setSelectedDate] = useState(formatDate(new Date()));
     const [searchQuery, setSearchQuery] = useState('');
     
-    // ★ 編集ダイアログ用のState
     const [visible, setVisible] = useState(false);
     const [editId, setEditId] = useState('');
     const [editAmount, setEditAmount] = useState('');
     const [editMemo, setEditMemo] = useState('');
-    const [editCategory, setEditCategory] = useState(''); // 表示用（変更不可にしておくか、簡易編集にするか）
+    const [editCategory, setEditCategory] = useState(''); 
     const [editDate, setEditDate] = useState('');
 
     const { markedDates, totalByDate } = useMemo(() => {
@@ -81,12 +81,12 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
         marked[selectedDate] = {
             ...(marked[selectedDate] || {}),
             selected: true,
-            selectedColor: '#3498db',
-            selectedTextColor: 'white',
+            selectedColor: theme.colors.primary, // テーマ色を使用
+            selectedTextColor: theme.colors.onPrimary,
         };
         
         return { markedDates: marked, totalByDate: totals };
-    }, [expenses, selectedDate]);
+    }, [expenses, selectedDate, theme]); // themeを依存配列に追加
 
     const dailyExpenses = useMemo(() => {
         return expenses.filter(expense => expense.date === selectedDate);
@@ -113,7 +113,6 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
         );
     };
 
-    // ★ 編集ボタンが押された時の処理
     const handleEdit = (item: Expense) => {
         setEditId(item.id);
         setEditAmount(item.amount.toString());
@@ -123,7 +122,6 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
         setVisible(true);
     };
 
-    // ★ 保存処理
     const handleSave = () => {
         const amount = parseInt(editAmount, 10);
         if (isNaN(amount) || amount <= 0) {
@@ -134,7 +132,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
         onUpdateExpense({
             id: editId,
             amount: amount,
-            category: editCategory, // 今回はカテゴリ変更なし（必要ならPickerを追加）
+            category: editCategory,
             memo: editMemo,
             date: editDate
         });
@@ -146,25 +144,24 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
         <Card style={styles.listItemCard}>
             <List.Item
                 title={`${item.amount.toLocaleString()} 円`}
-                titleStyle={styles.itemAmount}
+                titleStyle={[styles.itemAmount, { color: theme.colors.error }]} // 赤字もテーマに合わせるなら theme.colors.error
                 description={`${item.date} | ${item.category}${item.memo ? ' / ' + item.memo : ''}`}
-                descriptionStyle={styles.itemDescription}
+                descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
                 left={(props) => (
                     <List.Icon 
                         icon={getCategoryIcon(item.category)}
-                        color="#3498db"
+                        color={theme.colors.primary}
                         style={props.style} 
                     />
                 )}
                 right={() => (
                     <IconButton
                         icon="delete"
-                        iconColor="#aaa"
+                        iconColor={theme.colors.onSurfaceDisabled}
                         size={24}
                         onPress={() => handleDelete(item.id)}
                     />
                 )}
-                // ★ タップしたら編集画面へ
                 onPress={() => handleEdit(item)}
             />
         </Card>
@@ -172,22 +169,24 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
 
     return (
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.container}>
+            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 
-                <View style={styles.searchContainer}>
+                <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
                     <Searchbar
                         placeholder="カテゴリやメモで検索"
                         onChangeText={setSearchQuery}
                         value={searchQuery}
-                        style={styles.searchBar}
-                        inputStyle={{ fontSize: 16 }}
-                        elevation={2}
+                        style={[styles.searchBar, { backgroundColor: theme.colors.surfaceVariant }]}
+                        inputStyle={{ fontSize: 16, color: theme.colors.onSurface }}
+                        iconColor={theme.colors.onSurfaceVariant}
+                        placeholderTextColor={theme.colors.onSurfaceDisabled}
+                        elevation={0}
                     />
                 </View>
 
                 {searchQuery.length > 0 ? (
                     <View style={styles.listSection}>
-                        <Title style={styles.sectionTitle}>🔍 "{searchQuery}" の検索結果</Title>
+                        <Title style={[styles.sectionTitle, { color: theme.colors.onBackground }]}>🔍 "{searchQuery}" の検索結果</Title>
                         {filteredExpenses.length > 0 ? (
                             <FlatList
                                 data={filteredExpenses}
@@ -201,16 +200,21 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
                     </View>
                 ) : (
                     <>
-                        <View style={styles.calendarContainer}>
+                        <View style={[styles.calendarContainer, { borderBottomColor: theme.colors.outlineVariant }]}>
+                            {/* カレンダーの色設定 */}
                             <Calendar
                                 onDayPress={day => setSelectedDate(day.dateString)}
                                 markingType={'simple'} 
                                 markedDates={markedDates}
                                 theme={{
-                                    todayTextColor: '#e67e22', 
-                                    selectedDayBackgroundColor: '#3498db',
-                                    selectedDayTextColor: 'white',
-                                    arrowColor: '#3498db',
+                                    calendarBackground: theme.colors.surface,
+                                    textSectionTitleColor: theme.colors.onSurface,
+                                    dayTextColor: theme.colors.onSurface,
+                                    todayTextColor: theme.colors.tertiary,
+                                    selectedDayBackgroundColor: theme.colors.primary,
+                                    selectedDayTextColor: theme.colors.onPrimary,
+                                    arrowColor: theme.colors.primary,
+                                    monthTextColor: theme.colors.onSurface,
                                     textMonthFontWeight: 'bold',
                                     textDayHeaderFontWeight: 'bold',
                                 }}
@@ -218,8 +222,8 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
                         </View>
 
                         <View style={styles.listSection}>
-                            <Title style={styles.sectionTitle}>{selectedDate} の支出</Title>
-                            <Text style={styles.dailyTotal}>
+                            <Title style={[styles.sectionTitle, { color: theme.colors.onBackground }]}>{selectedDate} の支出</Title>
+                            <Text style={[styles.dailyTotal, { color: theme.colors.error, borderBottomColor: theme.colors.outlineVariant }]}>
                                 合計: {totalByDate[selectedDate] ? totalByDate[selectedDate].toLocaleString() : 0} 円
                             </Text>
 
@@ -237,26 +241,25 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
                     </>
                 )}
 
-                {/* ★ 編集用ダイアログ */}
                 <Portal>
                     <Dialog visible={visible} onDismiss={() => setVisible(false)}>
                         <Dialog.Title>支出の編集</Dialog.Title>
                         <Dialog.Content>
-                            <Text style={{marginBottom: 10, color: '#666'}}>カテゴリ: {editCategory}</Text>
+                            <Text style={{marginBottom: 10, color: theme.colors.onSurfaceVariant}}>カテゴリ: {editCategory}</Text>
                             <TextInput
                                 label="金額"
                                 value={editAmount}
                                 onChangeText={setEditAmount}
                                 keyboardType="numeric"
                                 mode="outlined"
-                                style={styles.dialogInput}
+                                style={[styles.dialogInput, { backgroundColor: theme.colors.surface }]}
                             />
                             <TextInput
                                 label="メモ"
                                 value={editMemo}
                                 onChangeText={setEditMemo}
                                 mode="outlined"
-                                style={styles.dialogInput}
+                                style={[styles.dialogInput, { backgroundColor: theme.colors.surface }]}
                             />
                         </Dialog.Content>
                         <Dialog.Actions>
@@ -274,21 +277,16 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
     },
     searchContainer: {
         padding: 10,
-        backgroundColor: 'white',
         zIndex: 1,
     },
     searchBar: {
         borderRadius: 8,
-        backgroundColor: '#f0f0f0',
     },
     calendarContainer: {
-        backgroundColor: 'white',
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
         marginBottom: 10,
     },
     listSection: {
@@ -298,17 +296,14 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#333',
         marginTop: 10,
         marginBottom: 5,
     },
     dailyTotal: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#d9534f',
         marginBottom: 10,
         borderBottomWidth: 1,
-        borderBottomColor: '#ddd',
         paddingBottom: 10,
     },
     noDataText: {
@@ -326,16 +321,10 @@ const styles = StyleSheet.create({
     itemAmount: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#d9534f',
         marginTop: -5,
-    },
-    itemDescription: {
-        fontSize: 12,
-        color: '#666',
     },
     dialogInput: {
         marginBottom: 15,
-        backgroundColor: 'white',
     }
 });
 
