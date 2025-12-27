@@ -4,22 +4,29 @@ import {
   Text,
   FlatList,
   StyleSheet,
-  TouchableOpacity,
   Alert,
-  ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback
 } from 'react-native';
 
-// ★ react-native-paper からコンポーネントをインポート
-import { Card, Title, List, IconButton } from 'react-native-paper'; 
-import { Calendar } from 'react-native-calendars';
+// Dialog, Portal, TextInput, Button を追加インポート
+import { Card, Title, List, IconButton, Searchbar, Dialog, Portal, TextInput, Button } from 'react-native-paper'; 
+import { Calendar, LocaleConfig } from 'react-native-calendars';
 
-// 親（App.tsx）から受け取るpropsの型を定義
+LocaleConfig.locales['jp'] = {
+  monthNames: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  monthNamesShort: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  dayNames: ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'],
+  dayNamesShort: ['日', '月', '火', '水', '木', '金', '土'],
+};
+LocaleConfig.defaultLocale = 'jp';
+
 interface HistoryScreenProps {
     expenses: Expense[];
     onDeleteExpense: (id: string) => void;
+    onUpdateExpense: (expense: Expense) => void; // ★ 更新用の関数を受け取る
 }
 
-// データ型を定義 (App.tsxと合わせる)
 interface Expense {
     id: string;
     amount: number;
@@ -28,12 +35,10 @@ interface Expense {
     date: string; // 'YYYY-MM-DD'
 }
 
-// 日付を 'YYYY-MM-DD' 形式に整形するヘルパー関数
 const formatDate = (date: Date) => {
     return date.toISOString().split('T')[0];
 };
 
-// カテゴリに応じたアイコン名を取得するヘルパー関数
 const getCategoryIcon = (category: string) => {
     const lowerCat = category.toLowerCase();
     if (lowerCat.includes('食')) return 'food';
@@ -41,16 +46,22 @@ const getCategoryIcon = (category: string) => {
     if (lowerCat.includes('娯楽') || lowerCat.includes('趣味')) return 'gamepad-variant';
     if (lowerCat.includes('日用品')) return 'basket';
     if (lowerCat.includes('通信')) return 'phone';
-    if (lowerCat.includes('家賃')) return 'home';
-    return 'cash-multiple'; // デフォルト
+    if (lowerCat.includes('家賃') || lowerCat.includes('住')) return 'home';
+    return 'cash-multiple';
 }
 
-
-const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense }) => {
-    // 選択された日付を保持するState
+const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense, onUpdateExpense }) => {
     const [selectedDate, setSelectedDate] = useState(formatDate(new Date()));
+    const [searchQuery, setSearchQuery] = useState('');
+    
+    // ★ 編集ダイアログ用のState
+    const [visible, setVisible] = useState(false);
+    const [editId, setEditId] = useState('');
+    const [editAmount, setEditAmount] = useState('');
+    const [editMemo, setEditMemo] = useState('');
+    const [editCategory, setEditCategory] = useState(''); // 表示用（変更不可にしておくか、簡易編集にするか）
+    const [editDate, setEditDate] = useState('');
 
-    // ★ 1. カレンダーのマーキングデータと合計値を計算するロジック
     const { markedDates, totalByDate } = useMemo(() => {
         const marked: { [key: string]: any } = {};
         const totals: { [key: string]: number } = {};
@@ -67,7 +78,6 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
             };
         });
 
-        // 選択された日付のスタイルを設定
         marked[selectedDate] = {
             ...(marked[selectedDate] || {}),
             selected: true,
@@ -78,103 +88,202 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ expenses, onDeleteExpense
         return { markedDates: marked, totalByDate: totals };
     }, [expenses, selectedDate]);
 
-
-    // ★ 2. 選択された日の支出リストをフィルタリング
     const dailyExpenses = useMemo(() => {
         return expenses.filter(expense => expense.date === selectedDate);
     }, [expenses, selectedDate]);
 
-    // 削除ボタンの処理
+    const filteredExpenses = useMemo(() => {
+        if (!searchQuery) return [];
+        const query = searchQuery.toLowerCase();
+        return expenses.filter(expense => 
+            expense.category.toLowerCase().includes(query) || 
+            expense.memo.toLowerCase().includes(query)
+        );
+    }, [expenses, searchQuery]);
+
+
     const handleDelete = (id: string) => {
         Alert.alert(
             '削除の確認', 
             'この支出を削除しますか？', 
             [
                 { text: 'キャンセル', style: 'cancel' },
-                { text: '削除', style: 'destructive', onPress: () => {
-                    onDeleteExpense(id);
-                }},
+                { text: '削除', style: 'destructive', onPress: () => onDeleteExpense(id) },
             ]
         );
     };
 
-    // リストの各行を描画する関数 (モダンUIに変更)
+    // ★ 編集ボタンが押された時の処理
+    const handleEdit = (item: Expense) => {
+        setEditId(item.id);
+        setEditAmount(item.amount.toString());
+        setEditMemo(item.memo);
+        setEditCategory(item.category);
+        setEditDate(item.date);
+        setVisible(true);
+    };
+
+    // ★ 保存処理
+    const handleSave = () => {
+        const amount = parseInt(editAmount, 10);
+        if (isNaN(amount) || amount <= 0) {
+            Alert.alert('エラー', '正しい金額を入力してください');
+            return;
+        }
+
+        onUpdateExpense({
+            id: editId,
+            amount: amount,
+            category: editCategory, // 今回はカテゴリ変更なし（必要ならPickerを追加）
+            memo: editMemo,
+            date: editDate
+        });
+
+        setVisible(false);
+    };
+
     const renderItem = ({ item }: { item: Expense }) => (
-    <Card style={styles.listItemCard}>
-        {/* ★ List.Item を使用 */}
-        <List.Item
-            title={`${item.amount.toLocaleString()} 円`}
-            titleStyle={styles.itemAmount}
-            description={item.memo ? `${item.category} / ${item.memo}` : item.category}
-            descriptionStyle={styles.itemDescription}
-            // List.Icon を使用することで、型の問題を解決
-            left={props => (
-                <List.Icon 
-                    {...props} 
-                    icon={getCategoryIcon(item.category)}
-                    color="#3498db"
-                    style={{ justifyContent: 'center' }} // アイコンを中央寄せ
-                />
-            )}
-            right={() => (
-                <IconButton
-                    icon="delete"
-                    color="#aaa"
-                    size={24}
-                    onPress={() => handleDelete(item.id)}
-                />
-            )}
-        />
-    </Card>
-);
+        <Card style={styles.listItemCard}>
+            <List.Item
+                title={`${item.amount.toLocaleString()} 円`}
+                titleStyle={styles.itemAmount}
+                description={`${item.date} | ${item.category}${item.memo ? ' / ' + item.memo : ''}`}
+                descriptionStyle={styles.itemDescription}
+                left={(props) => (
+                    <List.Icon 
+                        icon={getCategoryIcon(item.category)}
+                        color="#3498db"
+                        style={props.style} 
+                    />
+                )}
+                right={() => (
+                    <IconButton
+                        icon="delete"
+                        iconColor="#aaa"
+                        size={24}
+                        onPress={() => handleDelete(item.id)}
+                    />
+                )}
+                // ★ タップしたら編集画面へ
+                onPress={() => handleEdit(item)}
+            />
+        </Card>
+    );
 
     return (
-        <View style={styles.container}>
-            {/* --- 1. カレンダー表示エリア --- */}
-            <View style={styles.calendarContainer}>
-                <Calendar
-                    onDayPress={day => {
-                        setSelectedDate(day.dateString);
-                    }}
-                    //markingType={'null'} 
-                    markedDates={markedDates}
-                    theme={{
-                        todayTextColor: '#e67e22', 
-                        selectedDayBackgroundColor: '#3498db',
-                        selectedDayTextColor: 'white',
-                        arrowColor: '#3498db',
-                    }}
-                />
-            </View>
-
-            {/* --- 2. 選択日別の合計値とリスト --- */}
-            <View style={styles.listSection}>
-                <Title style={styles.dailyTitle}>{selectedDate} の支出</Title>
-                <Text style={styles.dailyTotal}>
-                    合計: {totalByDate[selectedDate] ? totalByDate[selectedDate].toLocaleString() : 0} 円
-                </Text>
-
-                {dailyExpenses.length > 0 ? (
-                    <FlatList
-                        data={dailyExpenses}
-                        renderItem={renderItem}
-                        keyExtractor={item => item.id}
-                        style={styles.list}
-                        contentContainerStyle={styles.listContent}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.container}>
+                
+                <View style={styles.searchContainer}>
+                    <Searchbar
+                        placeholder="カテゴリやメモで検索"
+                        onChangeText={setSearchQuery}
+                        value={searchQuery}
+                        style={styles.searchBar}
+                        inputStyle={{ fontSize: 16 }}
+                        elevation={2}
                     />
+                </View>
+
+                {searchQuery.length > 0 ? (
+                    <View style={styles.listSection}>
+                        <Title style={styles.sectionTitle}>🔍 "{searchQuery}" の検索結果</Title>
+                        {filteredExpenses.length > 0 ? (
+                            <FlatList
+                                data={filteredExpenses}
+                                renderItem={renderItem}
+                                keyExtractor={item => item.id}
+                                contentContainerStyle={styles.listContent}
+                            />
+                        ) : (
+                            <Text style={styles.noDataText}>見つかりませんでした。</Text>
+                        )}
+                    </View>
                 ) : (
-                    <Text style={styles.noDataText}>この日の支出記録はありません。</Text>
+                    <>
+                        <View style={styles.calendarContainer}>
+                            <Calendar
+                                onDayPress={day => setSelectedDate(day.dateString)}
+                                markingType={'simple'} 
+                                markedDates={markedDates}
+                                theme={{
+                                    todayTextColor: '#e67e22', 
+                                    selectedDayBackgroundColor: '#3498db',
+                                    selectedDayTextColor: 'white',
+                                    arrowColor: '#3498db',
+                                    textMonthFontWeight: 'bold',
+                                    textDayHeaderFontWeight: 'bold',
+                                }}
+                            />
+                        </View>
+
+                        <View style={styles.listSection}>
+                            <Title style={styles.sectionTitle}>{selectedDate} の支出</Title>
+                            <Text style={styles.dailyTotal}>
+                                合計: {totalByDate[selectedDate] ? totalByDate[selectedDate].toLocaleString() : 0} 円
+                            </Text>
+
+                            {dailyExpenses.length > 0 ? (
+                                <FlatList
+                                    data={dailyExpenses}
+                                    renderItem={renderItem}
+                                    keyExtractor={item => item.id}
+                                    contentContainerStyle={styles.listContent}
+                                />
+                            ) : (
+                                <Text style={styles.noDataText}>この日の支出記録はありません。</Text>
+                            )}
+                        </View>
+                    </>
                 )}
+
+                {/* ★ 編集用ダイアログ */}
+                <Portal>
+                    <Dialog visible={visible} onDismiss={() => setVisible(false)}>
+                        <Dialog.Title>支出の編集</Dialog.Title>
+                        <Dialog.Content>
+                            <Text style={{marginBottom: 10, color: '#666'}}>カテゴリ: {editCategory}</Text>
+                            <TextInput
+                                label="金額"
+                                value={editAmount}
+                                onChangeText={setEditAmount}
+                                keyboardType="numeric"
+                                mode="outlined"
+                                style={styles.dialogInput}
+                            />
+                            <TextInput
+                                label="メモ"
+                                value={editMemo}
+                                onChangeText={setEditMemo}
+                                mode="outlined"
+                                style={styles.dialogInput}
+                            />
+                        </Dialog.Content>
+                        <Dialog.Actions>
+                            <Button onPress={() => setVisible(false)}>キャンセル</Button>
+                            <Button onPress={handleSave} mode="contained" style={{marginLeft: 10}}>保存</Button>
+                        </Dialog.Actions>
+                    </Dialog>
+                </Portal>
+
             </View>
-        </View>
+        </TouchableWithoutFeedback>
     );
 };
 
-// スタイル (モダンUIに合わせて調整)
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#f5f5f5',
+    },
+    searchContainer: {
+        padding: 10,
+        backgroundColor: 'white',
+        zIndex: 1,
+    },
+    searchBar: {
+        borderRadius: 8,
+        backgroundColor: '#f0f0f0',
     },
     calendarContainer: {
         backgroundColor: 'white',
@@ -186,15 +295,15 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingHorizontal: 15,
     },
-    dailyTitle: {
-        fontSize: 20,
+    sectionTitle: {
+        fontSize: 18,
         fontWeight: 'bold',
         color: '#333',
-        marginTop: 5,
+        marginTop: 10,
         marginBottom: 5,
     },
     dailyTotal: {
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: 'bold',
         color: '#d9534f',
         marginBottom: 10,
@@ -207,31 +316,26 @@ const styles = StyleSheet.create({
         marginTop: 20,
         color: '#999',
     },
-    list: {
-        flex: 1,
-    },
     listContent: {
         paddingBottom: 20,
     },
-    // ★ リストアイテムのモダンなスタイル
     listItemCard: {
         marginBottom: 8,
-        elevation: 2, // 影をつける
+        elevation: 2,
     },
     itemAmount: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#d9534f', // 支出カラー
+        color: '#d9534f',
         marginTop: -5,
     },
     itemDescription: {
         fontSize: 12,
         color: '#666',
     },
-    iconContainer: {
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingRight: 10,
+    dialogInput: {
+        marginBottom: 15,
+        backgroundColor: 'white',
     }
 });
 

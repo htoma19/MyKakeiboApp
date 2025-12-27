@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useState, useCallback, useEffect } from 'react'; 
-import { SafeAreaView, StatusBar, StyleSheet, View, Text } from 'react-native';
+import { SafeAreaView, StatusBar, StyleSheet, View, Text, Platform } from 'react-native';
 
 // AsyncStorage をインポート
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
@@ -14,7 +14,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import InputScreen from './src/InputScreen';
 import HistoryScreen from './src/HistoryScreen';
 import AnalysisScreen from './src/AnalysisScreen';
-import SettingsScreen from './src/SettingsScreen'; // ★ 追加
+import SettingsScreen from './src/SettingsScreen';
 
 // データ型を定義
 interface Expense {
@@ -33,7 +33,7 @@ interface Budget {
 // データ保存キー
 const EXPENSES_KEY = '@MyKakeiboApp:expenses';
 const BUDGETS_KEY = '@MyKakeiboApp:budgets';
-const CATEGORIES_KEY = '@MyKakeiboApp:categories'; // ★ 追加
+const CATEGORIES_KEY = '@MyKakeiboApp:categories';
 
 // デフォルトのカテゴリリスト
 const DEFAULT_CATEGORIES = [
@@ -54,7 +54,7 @@ const Tab = createBottomTabNavigator();
 const App = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES); // ★ カテゴリState
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [isLoading, setIsLoading] = useState(true); 
 
   // ====================================
@@ -66,11 +66,10 @@ const App = () => {
       try {
         const storedExpenses = await AsyncStorage.getItem(EXPENSES_KEY);
         const storedBudgets = await AsyncStorage.getItem(BUDGETS_KEY);
-        const storedCategories = await AsyncStorage.getItem(CATEGORIES_KEY); // ★ カテゴリ読み込み
+        const storedCategories = await AsyncStorage.getItem(CATEGORIES_KEY);
 
         if (storedExpenses) setExpenses(JSON.parse(storedExpenses));
         if (storedBudgets) setBudgets(JSON.parse(storedBudgets));
-        // 保存されたカテゴリがあれば使う、なければデフォルトを使う
         if (storedCategories) setCategories(JSON.parse(storedCategories));
       } catch (e) {
         console.error('Failed to load data', e);
@@ -81,12 +80,11 @@ const App = () => {
     loadData();
   }, []);
 
-  // データ保存用 useEffect
   useEffect(() => {
     if (!isLoading) {
         AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses)).catch(e => console.error(e));
         AsyncStorage.setItem(BUDGETS_KEY, JSON.stringify(budgets)).catch(e => console.error(e));
-        AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories)).catch(e => console.error(e)); // ★ カテゴリ保存
+        AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories)).catch(e => console.error(e));
     }
   }, [expenses, budgets, categories, isLoading]);
 
@@ -106,6 +104,11 @@ const App = () => {
     setExpenses(prev => [newExpense, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   }, []);
 
+  // ★ 追加：データの更新機能
+  const handleUpdateExpense = useCallback((updatedExpense: Expense) => {
+    setExpenses(prev => prev.map(e => e.id === updatedExpense.id ? updatedExpense : e));
+  }, []);
+
   const handleDeleteExpense = useCallback((id: string) => {
     setExpenses(prev => prev.filter(e => e.id !== id));
   }, []);
@@ -123,12 +126,10 @@ const App = () => {
     });
   }, []);
 
-  // ★ カテゴリ追加処理
   const handleAddCategory = useCallback((category: string) => {
       setCategories(prev => [...prev, category]);
   }, []);
 
-  // ★ カテゴリ削除処理
   const handleDeleteCategory = useCallback((category: string) => {
       setCategories(prev => prev.filter(c => c !== category));
   }, []);
@@ -158,7 +159,7 @@ const App = () => {
                 if (route.name === '登録') iconName = 'cash-register';
                 else if (route.name === '分析') iconName = 'chart-pie';
                 else if (route.name === '履歴') iconName = 'history';
-                else if (route.name === '設定') iconName = 'cog'; // ★ 設定アイコン
+                else if (route.name === '設定') iconName = 'cog';
                 return <Icon name={iconName} size={size} color={color} />;
               },
               tabBarActiveTintColor: theme.colors.primary,
@@ -167,16 +168,15 @@ const App = () => {
             })}
           >
             <Tab.Screen name="登録">
-              {/* categories を渡す */}
               {props => <InputScreen {...props} onAddExpense={handleAddExpense} categories={categories} />}
             </Tab.Screen>
             <Tab.Screen name="分析">
               {props => <AnalysisScreen {...props} expenses={expenses} budgets={budgets} onSetBudget={handleSetBudget} />}
             </Tab.Screen>
             <Tab.Screen name="履歴">
-              {props => <HistoryScreen {...props} expenses={expenses} onDeleteExpense={handleDeleteExpense} />}
+              {/* ★ onUpdateExpense を渡すように変更 */}
+              {props => <HistoryScreen {...props} expenses={expenses} onDeleteExpense={handleDeleteExpense} onUpdateExpense={handleUpdateExpense} />}
             </Tab.Screen>
-            {/* ★ 設定タブを追加 */}
             <Tab.Screen name="設定">
               {props => <SettingsScreen {...props} categories={categories} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} />}
             </Tab.Screen>
@@ -191,6 +191,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    // ✅ 以下の行を追加（Androidの場合のみ、ステータスバーの高さ分だけ下にずらす）
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   loadingContainer: {
     flex: 1,

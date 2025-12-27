@@ -197,7 +197,10 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 15, },
   label: { fontSize: 14, marginBottom: 4, fontWeight: '500', color: '#555', },
   textInput: { marginBottom: 0, backgroundColor: 'white', },
-  categorySelectGroup: { marginBottom: 15, },
+  categorySelectGroup: { 
+    marginBottom: 15,
+    marginTop: 15,
+  },
   dateButton: { backgroundColor: 'white', borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 15, alignItems: 'center', },
   dateButtonText: { fontSize: 16, color: '#333', fontWeight: '600', },
   buttonContent: { paddingVertical: 8, },
